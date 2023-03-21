@@ -8,25 +8,28 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 var (
-	addr = flag.String("addr", "localhost:50051", "the address to connect to")
+	addr = flag.String("addr", "localhost:50050", "the address to connect to")
 )
 
 func uploadFile(client pb.FileUploadServiceClient, filePath string) error {
-	fileContent, err := ioutil.ReadFile(filePath)
+	ctxTimeout, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+
+	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
 
 	fileName := filepath.Base(filePath)
 
-	_, err = client.UploadFile(context.Background(), &pb.FileUploadRequest{FileContent: fileContent, FileName: fileName})
+	_, err = client.UploadFile(ctxTimeout, &pb.FileUploadRequest{FileContent: fileContent, FileName: fileName})
 	if err != nil {
 		return err
 	}
@@ -36,16 +39,18 @@ func uploadFile(client pb.FileUploadServiceClient, filePath string) error {
 
 func downloadFile(client pb.FileUploadServiceClient, fileName string) error {
 
-	response, err := client.DownloadFile(context.Background(), &pb.FileDownloadRequest{FileName: fileName})
+	ctxTimeout, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+
+	response, err := client.DownloadFile(ctxTimeout, &pb.FileDownloadRequest{FileName: fileName})
+
+	if err != nil {
+		return err
+	}
 
 	fileContent := response.GetFileContent()
 
 	fmt.Println("File content: " + string(fileContent))
-	//fileName := response.GetFileName()
-
-	//fmt.Println(fileName + ":" + string(fileContent))
-
-	// Do somethinclientg with the file content and name, e.g. save to disk
 
 	path := filepath.Join("client", fileName)
 
@@ -75,7 +80,11 @@ func downloadFile(client pb.FileUploadServiceClient, fileName string) error {
 func getListFiles(client pb.FileUploadServiceClient) {
 
 	log.Printf("Streaming started")
-	stream, err := client.GetListFiles(context.Background(), &pb.ListFilesRequest{})
+
+	ctxTimeout, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+
+	stream, err := client.GetListFiles(ctxTimeout, &pb.ListFilesRequest{})
 	if err != nil {
 		log.Fatalf("Could not send names: %v", err)
 	}
@@ -105,19 +114,32 @@ func main() {
 	defer conn.Close()
 
 	client := pb.NewFileUploadServiceClient(conn)
+	/*
+		err = uploadFile(client, "client/Screenshot.png")
 
-	err = uploadFile(client, "client/Screenshot.png")
+		if err != nil {
+			fmt.Printf("error upload file: %v", err)
+		}
+
+		err = downloadFile(client, "test.txt")
+
+		if err != nil {
+			fmt.Printf("error download file: %v", err)
+		}
+
+
+
+		err = downloadFile(client, "test.txt")
+
+		if err != nil {
+			fmt.Printf("error download file: %v", err)
+		}
+	*/
+	err = uploadFile(client, "client/text.txt")
 
 	if err != nil {
-		log.Fatalf("error upload file: %v", err)
+		fmt.Printf("error upload file: %v", err)
 	}
-
-	err = downloadFile(client, "test.txt")
-
-	if err != nil {
-		log.Fatalf("error download file: %v", err)
-	}
-
 	getListFiles(client)
 
 }
